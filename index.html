@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pujiverse IPTV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+<style>
+/* Layout: set-top-box shell. Three views: Profiles → Profile settings (section menu | form) → Player (groups | list | screen). */
+:root{
+  --bg:#0c0e12; --panel:#13161c; --raise:#1b1f27; --line:#262b35;
+  --fg:#e8eaee; --dim:#8b93a3; --accent:#ffb020; --accent-ink:#1a1204;
+  --live:#ff4d4d; --ok:#3ecf8e;
+  --f-display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--f-body);overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+.app{height:100%;display:grid;grid-template-rows:auto 1fr;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);min-width:0}
+.brand{font:700 22px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.brand b{color:var(--accent)}
+.crumb{flex:1;min-width:0;color:var(--dim);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crumb strong{color:var(--fg);font-weight:500}
+.clock{font:500 15px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--dim)}
+.btn{background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:7px 12px;white-space:nowrap}
+.btn:hover{border-color:var(--dim)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.danger{color:var(--live)}
+.btn.danger.armed{background:var(--live);color:#fff;border-color:var(--live)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.view{min-height:0;overflow:auto}
+
+/* ---------- Profiles ---------- */
+.wrap{max-width:980px;margin:0 auto;padding:24px 16px 40px;display:flex;flex-direction:column;gap:18px}
+.h1{font:700 30px/1.1 var(--f-display);letter-spacing:.03em;text-transform:uppercase;margin:0;text-wrap:balance}
+.lede{color:var(--dim);margin:0;max-width:65ch}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px}
+.plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.pcard.active{border-color:var(--accent)}
+.pcard h3{margin:0;font:700 20px/1.15 var(--f-display);letter-spacing:.02em;overflow-wrap:anywhere}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px}
+.kv dt{color:var(--dim)} .kv dd{margin:0;font-family:var(--f-mono);overflow-wrap:anywhere}
+.chip{display:inline-block;font:700 11px var(--f-display);letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;border-radius:3px;background:var(--raise);color:var(--dim);border:1px solid var(--line)}
+.chip.on{color:var(--accent);border-color:var(--accent)}
+.pcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.empty{padding:24px 16px;color:var(--dim)}
+
+/* ---------- Profile editor (StbEmu-style menu) ---------- */
+.editor{display:grid;grid-template-columns:260px 1fr;grid-template-rows:1fr auto;min-height:100%}
+.menu{background:var(--panel);border-right:1px solid var(--line);padding:12px 0;display:flex;flex-direction:column}
+.menu .ttl{font:700 12px var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);padding:6px 18px 10px}
+.mi{display:block;width:100%;text-align:left;background:none;border:0;border-left:3px solid transparent;padding:12px 18px;color:var(--dim)}
+.mi b{display:block;color:var(--fg);font:600 15px var(--f-body)}
+.mi small{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi:hover{background:var(--raise)}
+.mi.on{background:var(--raise);border-left-color:var(--accent)}
+.mi .warn{color:var(--live)}
+.form{padding:20px 16px 32px;max-width:720px;width:100%;display:flex;flex-direction:column;gap:16px;min-width:0}
+.form h2{margin:0;font:700 24px var(--f-display);letter-spacing:.04em;text-transform:uppercase}
+.fld{display:flex;flex-direction:column;gap:5px}
+.fld label{font-weight:500}
+.fld label .req{color:var(--accent);margin-left:4px}
+.fld .hint{font-size:12px;color:var(--dim);margin:0}
+.fld .ferr{font-size:12px;color:var(--live);margin:0}
+.fld input[type=text],.fld input[type=url],.fld input[type=password],.fld input[type=number],.fld select{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0}
+.fld input.mono{font-family:var(--f-mono);letter-spacing:.02em}
+.fld.bad input,.fld.bad select{border-color:var(--live)}
+.inrow{display:flex;gap:8px}
+.inrow input{flex:1}
+.toggle{display:flex;align-items:flex-start;gap:10px;cursor:pointer}
+.toggle input{width:18px;height:18px;accent-color:var(--accent);margin-top:2px;flex:none}
+.savebar{position:sticky;bottom:0;display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom,0px));background:var(--panel);border-top:1px solid var(--line);grid-column:1/-1}
+.savebar .note{margin-right:auto;color:var(--dim);font-size:13px}
+
+/* ---------- Player ---------- */
+.player{display:grid;grid-template-columns:210px 330px 1fr;min-height:0;height:100%}
+.rail,.list{border-right:1px solid var(--line);overflow:auto;min-height:0}
+.rail{background:var(--panel)}
+.label{font:700 12px var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);padding:14px 14px 8px}
+.modes{display:flex;gap:4px;padding:10px 10px 0}
+.mode{flex:1;background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:6px;font:700 13px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.mode.on{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}
+.group{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;background:none;border:0;border-left:3px solid transparent;padding:8px 14px;color:var(--dim)}
+.group span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group .n{font:500 12px var(--f-mono);font-variant-numeric:tabular-nums}
+.group:hover{color:var(--fg);background:var(--raise)}
+.group.on{color:var(--fg);border-left-color:var(--accent);background:var(--raise)}
+.list{display:flex;flex-direction:column}
+.search{position:sticky;top:0;background:var(--bg);padding:10px;border-bottom:1px solid var(--line);z-index:1}
+.search input,.gsel{width:100%;background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.ch{display:grid;grid-template-columns:44px 44px 1fr auto;align-items:center;gap:10px;width:100%;text-align:left;border-bottom:1px solid var(--line);padding:8px 10px;cursor:pointer}
+.ch:hover{background:var(--raise)}
+.ch.on{background:var(--raise);box-shadow:inset 3px 0 0 var(--accent)}
+.ch .num{font:500 13px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--dim);text-align:right}
+.ch .logo{width:44px;height:30px;border-radius:4px;background:var(--panel);display:grid;place-items:center;overflow:hidden;font:700 12px var(--f-display);color:var(--dim)}
+.ch .logo img{width:100%;height:100%;object-fit:contain}
+.ch .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ch .nm small{display:block;color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.fav{background:none;border:0;color:var(--line);font-size:16px;padding:2px 4px}
+.fav.on{color:var(--accent)}
+.more{margin:10px}
+.stage{display:flex;flex-direction:column;min-width:0;min-height:0}
+.screen{position:relative;flex:1;background:#000;min-height:0}
+video{width:100%;height:100%;display:block;background:#000}
+.osd{position:absolute;left:16px;right:16px;bottom:56px;display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:8px;background:rgba(12,14,18,.86);border:1px solid var(--line);transition:opacity .4s}
+.osd.hide{opacity:0;pointer-events:none}
+.osd .num{font:700 30px/1 var(--f-display);color:var(--accent);font-variant-numeric:tabular-nums}
+.osd .t{font:700 20px/1.1 var(--f-display);letter-spacing:.02em}
+.osd .s{color:var(--dim);font-size:12px}
+.osd .epg{font-size:12px;color:var(--fg)}
+.osd .epg span{color:var(--dim);font-family:var(--f-mono)}
+.badge{font:700 11px var(--f-display);letter-spacing:.12em;padding:3px 7px;border-radius:3px;background:var(--live);color:#fff;margin-left:auto}
+.msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--dim);padding:24px;pointer-events:none}
+.msg strong{display:block;color:var(--fg);font:700 22px var(--f-display);letter-spacing:.04em;margin-bottom:6px}
+.msg span{display:block;max-width:52ch}
+.jump{position:absolute;top:16px;right:16px;font:700 44px var(--f-display);color:var(--accent);background:rgba(0,0,0,.7);padding:4px 16px;border-radius:6px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel)}
+.bar .stat{margin-left:auto;font:500 12px var(--f-mono);color:var(--dim)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-right:6px}
+.dot.ok{background:var(--ok)} .dot.err{background:var(--live)}
+.keys{color:var(--dim);font-size:12px}
+kbd{font:500 11px var(--f-mono);border:1px solid var(--line);border-radius:3px;padding:1px 5px;background:var(--raise)}
+.gsel{display:none;margin-top:8px}
+.loading{padding:18px 14px;color:var(--dim)}
+.toast{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--raise);border:1px solid var(--line);padding:10px 16px;border-radius:8px;z-index:50;max-width:calc(100vw - 32px)}
+
+@media (max-width:900px){
+  body{overflow:auto}
+  .app{height:auto;min-height:100%}
+  .editor{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
+  .menu{flex-direction:row;overflow-x:auto;padding:0;border-right:0;border-bottom:1px solid var(--line)}
+  .menu .ttl{display:none}
+  .mi{border-left:0;border-bottom:3px solid transparent;padding:10px 14px;flex:none;width:auto}
+  .mi.on{border-bottom-color:var(--accent)}
+  .mi small{display:none}
+  .player{grid-template-columns:1fr;height:auto}
+  .rail{display:none}
+  .gsel{display:block}
+  .stage{order:-1}
+  .screen{aspect-ratio:16/9;flex:none;max-width:100%}
+  .list{border-right:0;max-height:65vh}
+  .keys,.clock{display:none}
+  .osd{bottom:12px}
+}
+@media (prefers-reduced-motion:reduce){.osd{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">Puji<b>verse</b> IPTV</div>
+    <div class="crumb" id="crumb"></div>
+    <div class="clock" id="clock">--:--</div>
+    <button class="btn" id="hdrBtn" hidden></button>
+  </header>
+
+  <!-- PROFILES -->
+  <section class="view" id="vProfiles">
+    <div class="wrap">
+      <div>
+        <h1 class="h1">Profiles</h1>
+        <p class="lede">Each profile holds one IPTV subscription: its portal, the STB identity the provider registered (MAC address, serial number, device ID), and player settings.</p>
+      </div>
+      <div class="toolbar">
+        <button class="btn primary" id="addProfile">Add profile</button>
+        <button class="btn" id="exportBtn">Export profiles</button>
+        <label class="btn" for="importFile">Import profiles</label>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
+      <div class="plist" id="plist"></div>
+    </div>
+  </section>
+
+  <!-- PROFILE EDITOR -->
+  <section class="view" id="vEdit" hidden>
+    <div class="editor">
+      <nav class="menu" id="menu" aria-label="Profile settings"></nav>
+      <form class="form" id="form" novalidate></form>
+      <div class="savebar">
+        <span class="note" id="saveNote">Fields marked <span style="color:var(--accent)">*</span> are required.</span>
+        <button type="button" class="btn" id="cancelEdit">Cancel</button>
+        <button type="button" class="btn" id="saveOnly">Save</button>
+        <button type="button" class="btn primary" id="saveOpen">Save &amp; connect</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLAYER -->
+  <section class="view" id="vPlayer" hidden style="overflow:hidden">
+    <div class="player">
+      <nav class="rail" aria-label="Groups">
+        <div class="modes" id="modes">
+          <button class="mode on" data-mode="tv">Live TV</button>
+          <button class="mode" data-mode="vod">Movies</button>
+        </div>
+        <div class="label" id="railLabel">Groups</div>
+        <div id="rail"></div>
+      </nav>
+      <section class="list" aria-label="Channels">
+        <div class="search">
+          <input id="q" type="search" placeholder="Search" autocomplete="off">
+          <select id="gsel" class="gsel" aria-label="Group"></select>
+        </div>
+        <div id="items"></div>
+      </section>
+      <section class="stage">
+        <div class="screen" id="screen">
+          <video id="v" playsinline controls></video>
+          <div class="msg" id="msg"><div><strong>Pick a channel</strong><span>Choose a group on the left, then a channel.</span></div></div>
+          <div class="osd hide" id="osd">
+            <div class="num" id="osdNum"></div>
+            <div style="min-width:0"><div class="t" id="osdName"></div><div class="s" id="osdGroup"></div><div class="epg" id="osdEpg"></div></div>
+            <span class="badge" id="osdLive">LIVE</span>
+          </div>
+          <div class="jump" id="jump" hidden></div>
+        </div>
+        <div class="bar">
+          <button class="btn" id="prev">◀ CH−</button>
+          <button class="btn" id="next">CH+ ▶</button>
+          <button class="btn" id="favBtn">☆ Favorite</button>
+          <button class="btn" id="fsBtn">Fullscreen</button>
+          <span class="keys"><kbd>↑</kbd><kbd>↓</kbd> channel · <kbd>0-9</kbd> jump · <kbd>F</kbd> fullscreen · <kbd>M</kbd> mute · <kbd>I</kbd> info</span>
+          <span class="stat"><span class="dot" id="dot"></span><span id="stat">Idle</span></span>
+        </div>
+      </section>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+};
+function toast(t){ const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 3200); }
+
+/* =================== Options =================== */
+const MODELS = ["MAG200","MAG245","MAG250","MAG254","MAG256","MAG270","MAG322","MAG324","MAG349","MAG351","MAG352","MAG420","MAG424","MAG424w3","MAG520","MAG524","AuraHD"];
+const FIRMWARES = [["218","0.2.18 (default)"],["216","0.2.16"],["250","2.50"],["2.20.02","2.20.02"]];
+const RESOLUTIONS = [["1280x720","1280 × 720 (720p)"],["1920x1080","1920 × 1080 (1080p)"],["3840x2160","3840 × 2160 (4K)"]];
+const LANGS = [["en","English"],["ru","Русский"],["uk","Українська"],["de","Deutsch"],["fr","Français"],["es","Español"],["it","Italiano"],["pt","Português"],["nl","Nederlands"],["pl","Polski"],["tr","Türkçe"],["ar","العربية"],["hi","हिन्दी"],["te","తెలుగు"],["ta","தமிழ்"],["ur","اردو"],["el","Ελληνικά"],["ro","Română"]];
+const TYPES = [["stalker","MAG / Stalker portal (MAC address)"],["xtream","Xtream Codes (username & password)"],["m3u","M3U playlist URL"]];
+const ENGINES = [["auto","Automatic"],["hls","HLS (hls.js)"],["mpegts","MPEG-TS (mpegts.js)"],["native","Browser built-in"]];
+const BUFFERS = [["low","Low latency (smaller buffer)"],["normal","Normal"],["high","Large (smoother on weak networks)"]];
+const ASPECTS = [["contain","Fit (keep aspect ratio)"],["cover","Zoom to fill"],["fill","Stretch"]];
+const TZS = (() => { try{ return Intl.supportedValuesOf("timeZone"); }catch{ return ["UTC","America/Chicago","America/New_York","America/Los_Angeles","Europe/London","Europe/Berlin","Asia/Kolkata","Asia/Dubai"]; } })();
+const MAC_RE = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i;
+const magUA = m => `Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) ${m || "MAG250"} stbapp ver: 2 rev: 250 Safari/533.3`;
+
+const hex = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => b.toString(16).padStart(2,"0")).join("").toUpperCase();
+const genMac = () => "00:1A:79:" + hex(3).match(/../g).join(":");
+const genSerial = () => hex(7).slice(0,13);
+async function sha256(s){
+  if (!crypto.subtle) throw new Error("Generating IDs needs a secure page (https or localhost).");
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(b), x => x.toString(16).padStart(2,"0")).join("").toUpperCase();
+}
+
+function newProfile(){
+  return {
+    id: "p" + Date.now().toString(36) + hex(2),
+    name: "New profile #" + hex(3).toLowerCase(),
+    type: "stalker",
+    portal: { url: "", lang: "en", username: "", password: "" },
+    stb: { model: "MAG250", image: "218", ua: "", resolution: "1920x1080", mac: genMac(), sn: "", deviceId: "", deviceId2: "", signature: "" },
+    player: { engine: "auto", buffer: "normal", aspect: "contain", reconnect: true, volume: 100, autoplayLast: true },
+    adv: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", backend: "", key: "", proxyStreams: true, timeout: 15, vod: true }
+  };
+}
+const get = (o, path) => path.split(".").reduce((a, k) => a?.[k], o);
+const set = (o, path, v) => { const ks = path.split("."); const last = ks.pop(); ks.reduce((a, k) => a[k] ??= {}, o)[last] = v; };
+
+/* =================== Settings schema =================== */
+const SECTIONS = [
+  { id: "profile", title: "Profile name", sub: p => p.name, fields: [
+    { k: "name", label: "Profile name", req: true },
+    { k: "type", label: "Portal type", type: "select", opts: TYPES, hint: "MAG / Stalker portals use the MAC address your provider registered. Choose Xtream or M3U if your provider gave you a username and password or a playlist link." },
+  ]},
+  { id: "portal", title: "Portal settings", sub: p => p.portal.url || "Not set", fields: [
+    { k: "portal.url", type: "url", req: true, mono: true,
+      label: p => ({ stalker: "Portal URL", xtream: "Server URL", m3u: "Playlist URL" })[p.type],
+      ph: p => ({ stalker: "http://portal.example.com/c/", xtream: "http://provider.example.com:8080", m3u: "https://example.com/playlist.m3u" })[p.type],
+      hint: p => p.type === "stalker" ? "Use the address your provider gave you. With or without /c/ at the end both work." : "" },
+    { k: "portal.lang", label: "Portal language", type: "select", opts: LANGS, req: true, show: p => p.type === "stalker" },
+    { k: "portal.username", label: "Username", req: true, show: p => p.type === "xtream" },
+    { k: "portal.password", label: "Password", type: "password", req: true, show: p => p.type === "xtream" },
+  ]},
+  { id: "stb", title: "STB configuration", show: p => p.type === "stalker", sub: p => `${p.stb.model} · ${p.stb.mac}`, fields: [
+    { k: "stb.model", label: "STB model", type: "select", opts: MODELS.map(m => [m, m]) },
+    { k: "stb.image", label: "Firmware", type: "select", opts: FIRMWARES, hint: "Image version reported to the portal." },
+    { k: "stb.ua", label: "User agent", mono: true, ph: p => magUA(p.stb.model), hint: "Leave empty to use the standard agent for the selected STB model." },
+    { k: "stb.resolution", label: "Screen resolution", type: "select", opts: RESOLUTIONS },
+    { k: "stb.mac", label: "MAC address", req: true, mono: true, ph: "00:1A:79:00:00:00", gen: "mac",
+      hint: "Must match the MAC address your provider activated. MAG boxes start with 00:1A:79." },
+    { k: "stb.sn", label: "Serial number", mono: true, gen: "sn", hint: "Only needed if your provider checks it." },
+    { k: "stb.deviceId", label: "Device ID", mono: true, gen: "ids" },
+    { k: "stb.deviceId2", label: "Device ID 2", mono: true },
+    { k: "stb.signature", label: "Signature", mono: true, hint: "Generate fills Device ID, Device ID 2 and Signature from the serial number and MAC address." },
+  ]},
+  { id: "player", title: "Media player settings", sub: p => ENGINES.find(e => e[0] === p.player.engine)?.[1], fields: [
+    { k: "player.engine", label: "Player engine", type: "select", opts: ENGINES, hint: "Automatic picks HLS for .m3u8 links and MPEG-TS for .ts links." },
+    { k: "player.buffer", label: "Buffer size", type: "select", opts: BUFFERS },
+    { k: "player.aspect", label: "Aspect ratio", type: "select", opts: ASPECTS },
+    { k: "player.volume", label: "Start volume (%)", type: "number", min: 0, max: 100 },
+    { k: "player.reconnect", label: "Reconnect automatically when a stream drops", type: "check" },
+    { k: "player.autoplayLast", label: "Resume the last channel when the profile opens", type: "check" },
+  ]},
+  { id: "adv", title: "Advanced settings", sub: p => p.adv.tz, fields: [
+    { k: "adv.tz", label: "Time zone", type: "select", opts: () => TZS.map(t => [t, t]) },
+    { k: "adv.backend", label: "Backend server URL", type: "url", mono: true, ph: () => defaultBackend() || "https://your-iptv-backend.example.com",
+      hint: "The server that logs into the portal and relays streams. Leave empty when this page is opened from that server." },
+    { k: "adv.key", label: "Backend access key", type: "password", hint: "Only if the backend was started with an ACCESS_KEY." },
+    { k: "adv.proxyStreams", label: "Play streams through the backend", type: "check", hint: "Needed for http:// streams, providers that block browsers, and most MAG portals." },
+    { k: "adv.timeout", label: "Connection timeout (seconds)", type: "number", min: 3, max: 60 },
+    { k: "adv.vod", label: "Show Movies (video on demand)", type: "check", show: p => p.type !== "m3u" },
+  ]},
+];
+const vis = (x, p) => !x.show || x.show(p);
+const val = (f, p) => typeof f === "function" ? f(p) : f;
+
+function validate(p){
+  const errs = {};
+  for (const s of SECTIONS) if (vis(s, p)) for (const f of s.fields) if (vis(f, p)) {
+    const v = get(p, f.k);
+    if (f.req && (v === "" || v == null)) errs[f.k] = `${val(f.label, p)} is required.`;
+  }
+  if (p.type === "stalker" && p.stb.mac && !MAC_RE.test(p.stb.mac)) errs["stb.mac"] = "Use the format 00:1A:79:XX:XX:XX.";
+  if (p.portal.url){ try{ new URL(/^https?:\/\//i.test(p.portal.url) ? p.portal.url : "http://" + p.portal.url); }catch{ errs["portal.url"] = "This is not a valid address."; } }
+  return errs;
+}
+
+/* =================== Profiles =================== */
+let profiles = store.get("iptv.profiles", []);
+let activeId = store.get("iptv.activeProfile", null);
+const saveProfiles = () => store.set("iptv.profiles", profiles);
+
+// migrate playlists saved by version 1
+(() => {
+  const old = store.get("iptv.playlists", []);
+  if (!old.length || profiles.length) return;
+  for (const o of old){
+    if (o.type === "text") continue;
+    const p = newProfile(); p.name = o.name;
+    if (o.type === "xtream"){ p.type = "xtream"; p.portal.url = o.server; p.portal.username = o.user; p.portal.password = o.pass; }
+    else { p.type = "m3u"; p.portal.url = o.url; }
+    profiles.push(p);
+  }
+  saveProfiles();
+})();
+
+function show(view){
+  for (const v of ["vProfiles","vEdit","vPlayer"]) $("#" + v).hidden = v !== view;
+  const hb = $("#hdrBtn");
+  if (view === "vPlayer"){ hb.hidden = false; hb.textContent = "Profiles"; hb.onclick = () => { stopPlayback(); renderProfiles(); show("vProfiles"); }; }
+  else hb.hidden = true;
+  if (view !== "vPlayer") document.title = "Pujiverse IPTV";
+}
+
+function renderProfiles(){
+  $("#crumb").innerHTML = `<strong>${profiles.length}</strong> profile${profiles.length === 1 ? "" : "s"}`;
+  const box = $("#plist"); box.innerHTML = "";
+  if (!profiles.length){
+    box.innerHTML = `<div class="pcard"><h3>No profiles yet</h3><p class="lede">Add a profile with your provider's portal URL and the MAC address they activated, or a playlist link.</p><div class="acts"><button class="btn primary" data-a="add">Add profile</button><button class="btn" data-a="sample">Try sample channels</button></div></div>`;
+    box.querySelector('[data-a="add"]').onclick = () => edit(newProfile(), true);
+    box.querySelector('[data-a="sample"]').onclick = () => openPlayer(sampleProfile());
+    return;
+  }
+  for (const p of profiles){
+    const c = document.createElement("article");
+    c.className = "pcard" + (p.id === activeId ? " active" : "");
+    const host = (() => { try{ return new URL(/^https?:/i.test(p.portal.url) ? p.portal.url : "http://" + p.portal.url).host; }catch{ return p.portal.url || "—"; } })();
+    const rows = [["Portal", host]];
+    if (p.type === "stalker") rows.push(["MAC", p.stb.mac], ["Model", p.stb.model], ["Language", p.portal.lang]);
+    if (p.type === "xtream") rows.push(["User", p.portal.username]);
+    const errs = Object.keys(validate(p)).length;
+    c.innerHTML = `<div><span class="chip ${p.id === activeId ? "on" : ""}">${p.id === activeId ? "Active" : ({stalker:"MAG portal",xtream:"Xtream",m3u:"M3U"})[p.type]}</span></div>
+      <h3>${esc(p.name)}</h3>
+      <dl class="kv">${rows.map(([k,v]) => `<dt>${k}</dt><dd>${esc(v || "—")}</dd>`).join("")}</dl>
+      ${errs ? `<p class="hint" style="color:var(--live);margin:0">${errs} required setting${errs > 1 ? "s" : ""} missing</p>` : ""}
+      <div class="acts">
+        <button class="btn primary sm" data-a="open" ${errs ? "disabled" : ""}>Connect</button>
+        <button class="btn sm" data-a="edit">Settings</button>
+        <button class="btn sm" data-a="dup">Duplicate</button>
+        <button class="btn sm danger" data-a="del">Delete</button>
+      </div>`;
+    c.querySelector('[data-a="open"]').onclick = () => openPlayer(p);
+    c.querySelector('[data-a="edit"]').onclick = () => edit(p);
+    c.querySelector('[data-a="dup"]').onclick = () => {
+      const d = structuredClone(p); d.id = "p" + Date.now().toString(36) + hex(2); d.name = p.name + " (copy)";
+      profiles.splice(profiles.indexOf(p) + 1, 0, d); saveProfiles(); renderProfiles();
+    };
+    const del = c.querySelector('[data-a="del"]');
+    del.onclick = () => {
+      if (!del.classList.contains("armed")){ del.classList.add("armed"); del.textContent = "Confirm delete"; setTimeout(() => { del.classList.remove("armed"); del.textContent = "Delete"; }, 3500); return; }
+      profiles = profiles.filter(x => x.id !== p.id); saveProfiles(); renderProfiles(); toast(`Deleted ${p.name}`);
+    };
+    box.appendChild(c);
+  }
+}
+$("#addProfile").onclick = () => edit(newProfile(), true);
+$("#exportBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify(profiles, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "iptv-profiles.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$("#importFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try{
+    const arr = JSON.parse(await f.text()); if (!Array.isArray(arr)) throw 0;
+    let n = 0;
+    for (const x of arr){ if (!x || !x.portal) continue; const base = newProfile(); const p = { ...base, ...x, portal: { ...base.portal, ...x.portal }, stb: { ...base.stb, ...x.stb }, player: { ...base.player, ...x.player }, adv: { ...base.adv, ...x.adv } };
+      const i = profiles.findIndex(y => y.id === p.id); i > -1 ? profiles[i] = p : profiles.push(p); n++; }
+    saveProfiles(); renderProfiles(); toast(`Imported ${n} profile${n === 1 ? "" : "s"}`);
+  }catch{ toast("That file isn't a profiles export."); }
+  e.target.value = "";
+};
+
+/* =================== Editor =================== */
+let draft = null, draftIsNew = false, section = "profile", showErrs = false;
+
+function edit(p, isNew){
+  draft = structuredClone(p); draftIsNew = !!isNew; section = isNew ? "portal" : "profile"; showErrs = false;
+  renderEditor(); show("vEdit");
+}
+
+function renderEditor(){
+  if (!vis(SECTIONS.find(s => s.id === section), draft)) section = "profile";
+  renderMenu(); renderForm();
+}
+function renderMenu(){
+  $("#crumb").innerHTML = `${draftIsNew ? "New profile" : "Settings"} · <strong>${esc(draft.name)}</strong>`;
+  const errs = validate(draft);
+  const menu = $("#menu"); menu.innerHTML = `<div class="ttl">${esc(draft.name)}</div>`;
+  for (const s of SECTIONS){
+    if (!vis(s, draft)) continue;
+    const bad = s.fields.some(f => errs[f.k] && vis(f, draft));
+    const b = document.createElement("button"); b.type = "button";
+    b.className = "mi" + (s.id === section ? " on" : "");
+    b.innerHTML = `<b>${esc(s.title)}</b><small class="${bad ? "warn" : ""}">${esc(bad ? "Required setting missing" : s.sub(draft) || "")}</small>`;
+    b.onclick = () => { section = s.id; renderEditor(); };
+    menu.appendChild(b);
+  }
+}
+function renderForm(){
+  const errs = validate(draft);
+  const sec = SECTIONS.find(s => s.id === section);
+  const form = $("#form"); form.innerHTML = `<h2>${esc(sec.title)}</h2>`;
+  for (const f of sec.fields){
+    if (!vis(f, draft)) continue;
+    const id = "f_" + f.k.replace(/\./g, "_");
+    const v = get(draft, f.k);
+    const label = val(f.label, draft), hint = val(f.hint, draft), ph = val(f.ph, draft) || "";
+    const err = showErrs && errs[f.k];
+    const w = document.createElement("div"); w.className = "fld" + (err ? " bad" : "");
+    let input;
+    if (f.type === "check"){
+      w.innerHTML = `<label class="toggle" for="${id}"><input type="checkbox" id="${id}" ${v ? "checked" : ""}><span>${esc(label)}${hint ? `<span class="hint" style="display:block;color:var(--dim);font-size:12px;font-weight:400">${esc(hint)}</span>` : ""}</span></label>`;
+      w.querySelector("input").onchange = e => { set(draft, f.k, e.target.checked); renderMenu(); };
+      form.appendChild(w); continue;
+    }
+    if (f.type === "select"){
+      const opts = typeof f.opts === "function" ? f.opts(draft) : f.opts;
+      input = `<select id="${id}">${opts.map(([o, t]) => `<option value="${esc(o)}" ${String(v) === String(o) ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+    } else {
+      const t = f.type === "password" ? "password" : f.type === "number" ? "number" : f.type === "url" ? "url" : "text";
+      input = `<input type="${t}" id="${id}" class="${f.mono ? "mono" : ""}" value="${esc(v ?? "")}" placeholder="${esc(ph)}" ${f.min != null ? `min="${f.min}" max="${f.max}"` : ""} autocomplete="off" spellcheck="false">`;
+    }
+    const gen = f.gen ? `<button type="button" class="btn" data-gen="${f.gen}">Generate</button>` : "";
+    w.innerHTML = `<label for="${id}">${esc(label)}${f.req ? '<span class="req" aria-label="required">*</span>' : ""}</label>
+      ${gen ? `<div class="inrow">${input}${gen}</div>` : input}
+      ${err ? `<p class="ferr">${esc(err)}</p>` : ""}${hint ? `<p class="hint">${esc(hint)}</p>` : ""}`;
+    const el = w.querySelector("#" + id);
+    el.oninput = el.onchange = e => {
+      let x = e.target.value;
+      if (f.type === "number") x = x === "" ? "" : Number(x);
+      if (f.k === "stb.mac") x = x.toUpperCase();
+      set(draft, f.k, x);
+      if (f.type === "select"){ if (e.type === "change") renderEditorKeepFocus(id); }
+      else if (e.type === "input") renderMenu();
+    };
+    if (f.k === "stb.mac") el.onblur = () => { el.value = draft.stb.mac; };
+    const gb = w.querySelector("[data-gen]");
+    if (gb) gb.onclick = async () => {
+      try{
+        if (f.gen === "mac") draft.stb.mac = genMac();
+        if (f.gen === "sn") draft.stb.sn = genSerial();
+        if (f.gen === "ids"){
+          if (!draft.stb.sn) draft.stb.sn = genSerial();
+          draft.stb.deviceId = await sha256(draft.stb.sn);
+          draft.stb.deviceId2 = draft.stb.deviceId;
+          draft.stb.signature = await sha256(draft.stb.sn + draft.stb.mac);
+        }
+        renderEditor();
+      }catch(err){ toast(err.message); }
+    };
+    form.appendChild(w);
+  }
+}
+function renderEditorKeepFocus(id){
+  const el = document.getElementById(id); const pos = el && el.selectionStart;
+  renderEditor();
+  const n = document.getElementById(id);
+  if (n){ n.focus(); try{ if (pos != null) n.setSelectionRange(pos, pos); }catch{} }
+}
+
+function commit(){
+  const errs = validate(draft);
+  if (Object.keys(errs).length){
+    showErrs = true;
+    const first = SECTIONS.find(s => vis(s, draft) && s.fields.some(f => errs[f.k] && vis(f, draft)));
+    if (first) section = first.id;
+    renderEditor(); toast("Fill in the required settings first."); return null;
+  }
+  draft.portal.url = draft.portal.url.trim();
+  const i = profiles.findIndex(p => p.id === draft.id);
+  i > -1 ? profiles[i] = draft : profiles.push(draft);
+  saveProfiles(); return draft;
+}
+$("#cancelEdit").onclick = () => { renderProfiles(); show("vProfiles"); };
+$("#saveOnly").onclick = () => { const p = commit(); if (p){ toast("Saved"); renderProfiles(); show("vProfiles"); } };
+$("#saveOpen").onclick = () => { const p = commit(); if (p) openPlayer(p); };
+
+/* =================== Backend helpers =================== */
+function defaultBackend(){ return /^https?:$/.test(location.protocol) ? location.origin : ""; }
+function backendOf(p){ return ((p.adv.backend || "").trim() || defaultBackend()).replace(/\/+$/, ""); }
+function needBackend(p){
+  const b = backendOf(p);
+  if (!b) throw new Error("No backend server. Open this page from the IPTV server, or set Backend server URL in Advanced settings.");
+  return b;
+}
+function proxied(p, url, withUA){
+  if (!p.adv.proxyStreams) return url;
+  const b = needBackend(p);
+  let u = `${b}/api/proxy?url=${encodeURIComponent(url)}`;
+  if (withUA) u += `&ua=${encodeURIComponent(p.stb.ua || magUA(p.stb.model))}`;
+  if (p.adv.key) u += `&key=${encodeURIComponent(p.adv.key)}`;
+  return u;
+}
+async function stalker(action, params = {}){
+  const p = cur.profile, b = needBackend(p);
+  let r;
+  try{
+    r = await fetch(`${b}/api/stalker`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(p.adv.key ? { "X-Access-Key": p.adv.key } : {}) },
+      body: JSON.stringify({
+        profile: { portal: p.portal.url, lang: p.portal.lang, tz: p.adv.tz, mac: p.stb.mac, sn: p.stb.sn, deviceId: p.stb.deviceId,
+                   deviceId2: p.stb.deviceId2, signature: p.stb.signature, model: p.stb.model, image: p.stb.image, ua: p.stb.ua, timeout: p.adv.timeout },
+        session: cur.session, action, params
+      })
+    });
+  }catch{ throw new Error("Can't reach the backend server. Check Backend server URL in Advanced settings."); }
+  let j; try{ j = await r.json(); }catch{ throw new Error(`Backend error (HTTP ${r.status}).`); }
+  if (j.error) throw new Error(j.error);
+  if (j.session) cur.session = j.session;
+  if (j.account) cur.account = j.account;
+  return j.data;
+}
+async function fetchText(p, url){
+  let r;
+  try{ r = await fetch(proxied(p, url)); }catch{ throw new Error(p.adv.proxyStreams ? "Can't reach the backend server." : "The request was blocked. Turn on Play streams through the backend in Advanced settings."); }
+  if (!r.ok) throw new Error(`Server answered ${r.status}.`);
+  return r.text();
+}
+
+/* =================== Sources =================== */
+const SAMPLE_M3U = `#EXTM3U
+#EXTINF:-1 group-title="Samples",Mux Test Stream
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Samples",Apple Bipbop
+https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
+#EXTINF:-1 group-title="Samples",Tears of Steel
+https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8
+#EXTINF:-1 group-title="Samples",Big Buck Bunny (MP4)
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4`;
+function sampleProfile(){ const p = newProfile(); p.id = "sample"; p.name = "Sample channels"; p.type = "m3u"; p.sampleText = SAMPLE_M3U; p.adv.proxyStreams = false; return p; }
+
+function parseM3U(text){
+  const out = []; let meta = null;
+  for (const raw of text.split(/\r?\n/)){
+    const l = raw.trim(); if (!l) continue;
+    if (l.startsWith("#EXTINF")){
+      const attr = k => (l.match(new RegExp(k + '="([^"]*)"')) || [])[1] || "";
+      const comma = l.lastIndexOf(",");
+      meta = { name: (comma > -1 ? l.slice(comma + 1) : "").trim() || attr("tvg-name") || "Channel", group: attr("group-title") || "Ungrouped", logo: attr("tvg-logo") };
+    } else if (l.startsWith("#EXTGRP:") && meta) meta.group = l.slice(8).trim() || meta.group;
+    else if (!l.startsWith("#")){ out.push({ ...(meta || { name: l.split("/").pop(), group: "Ungrouped", logo: "" }), url: l }); meta = null; }
+  }
+  return out;
+}
+
+const SRC = {
+  async tv(p){
+    if (p.type === "stalker"){
+      const [genres, chans] = await Promise.all([stalker("genres").catch(() => []), stalker("channels")]);
+      const gmap = Object.fromEntries(genres.map(g => [g.id, g.title]));
+      chans.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
+      return chans.map((c, i) => ({ key: "s" + c.id, num: c.number || i + 1, name: c.name, logo: c.logo, group: gmap[c.genre] || "Other", cmd: c.cmd, chId: c.id, live: true }));
+    }
+    if (p.type === "xtream"){
+      const base = p.portal.url.replace(/\/+$/, ""), U = encodeURIComponent(p.portal.username), P = encodeURIComponent(p.portal.password);
+      const api = async a => JSON.parse(await fetchText(p, `${base}/player_api.php?username=${U}&password=${P}${a}`));
+      const info = await api("");
+      if (!info?.user_info || String(info.user_info.auth) !== "1") throw new Error("Login rejected. Check the username and password.");
+      if (info.user_info.exp_date) cur.account = { expires: new Date(Number(info.user_info.exp_date) * 1000).toLocaleDateString() };
+      const [cats, streams] = await Promise.all([api("&action=get_live_categories"), api("&action=get_live_streams")]);
+      const cmap = Object.fromEntries((cats || []).map(c => [String(c.category_id), c.category_name]));
+      return (streams || []).map((s, i) => ({ key: "x" + s.stream_id, num: Number(s.num) || i + 1, name: s.name, logo: s.stream_icon || "", group: cmap[String(s.category_id)] || "Other",
+        url: `${base}/live/${U}/${P}/${s.stream_id}.m3u8`, alt: `${base}/live/${U}/${P}/${s.stream_id}.ts`, live: true }));
+    }
+    const list = parseM3U(p.sampleText || await fetchText(p, p.portal.url));
+    return list.map((c, i) => ({ key: "m" + c.url, num: i + 1, name: c.name, logo: c.logo, group: c.group, url: c.url, live: true }));
+  },
+  async vodGroups(p){
+    if (p.type === "stalker") return (await stalker("vod_categories")).map(c => ({ id: c.id, title: c.title }));
+    if (p.type === "xtream"){
+      const base = p.portal.url.replace(/\/+$/, ""), U = encodeURIComponent(p.portal.username), P = encodeURIComponent(p.portal.password);
+      const cats = JSON.parse(await fetchText(p, `${base}/player_api.php?username=${U}&password=${P}&action=get_vod_categories`));
+      return (cats || []).map(c => ({ id: String(c.category_id), title: c.category_name }));
+    }
+    return [];
+  },
+  async vodPage(p, cat, page){
+    if (p.type === "stalker"){
+      const r = await stalker("vod_list", { category: cat, page });
+      return { done: page * r.perPage >= r.total, total: r.total,
+        items: r.items.map(x => ({ key: "v" + x.id, name: x.name, sub: [x.year, x.series ? `${x.series.length} episodes` : ""].filter(Boolean).join(" · "), logo: x.logo, cmd: x.cmd, live: false })) };
+    }
+    const base = p.portal.url.replace(/\/+$/, ""), U = encodeURIComponent(p.portal.username), P = encodeURIComponent(p.portal.password);
+    const arr = JSON.parse(await fetchText(p, `${base}/player_api.php?username=${U}&password=${P}&action=get_vod_streams&category_id=${encodeURIComponent(cat)}`)) || [];
+    return { done: true, total: arr.length, items: arr.map(s => ({ key: "xv" + s.stream_id, name: s.name, sub: s.year || "", logo: s.stream_icon || "",
+      url: `${base}/movie/${U}/${P}/${s.stream_id}.${s.container_extension || "mp4"}`, live: false })) };
+  },
+  async resolve(p, item){
+    if (p.type === "stalker"){
+      const { url } = await stalker("link", { type: item.live ? "itv" : "vod", cmd: item.cmd });
+      return proxied(p, url, true);
+    }
+    return proxied(p, item.url);
+  }
+};
+
+/* =================== Player state =================== */
+const cur = { profile: null, session: null, account: null, mode: "tv", tv: [], groups: [], group: "All", query: "",
+              vodGroups: [], vodItems: [], vodPage: 0, vodDone: true, playing: null, list: [], retries: 0, token: 0 };
+let favs = new Set(store.get("iptv.favs", []));
+let hls = null, ts = null, osdTimer = null, jumpBuf = "", jumpTimer = null;
+const video = $("#v");
+
+async function openPlayer(p){
+  stopPlayback();
+  Object.assign(cur, { profile: p, session: null, account: null, mode: "tv", tv: [], groups: [], group: "All", query: "", vodGroups: [], vodItems: [], playing: null, list: [] });
+  if (p.id !== "sample"){ activeId = p.id; store.set("iptv.activeProfile", p.id); }
+  $("#q").value = "";
+  $("#modes").hidden = !(p.adv.vod && p.type !== "m3u");
+  document.querySelectorAll(".mode").forEach(m => m.classList.toggle("on", m.dataset.mode === "tv"));
+  video.style.objectFit = p.player.aspect;
+  video.volume = Math.max(0, Math.min(1, (Number(p.player.volume) || 100) / 100));
+  show("vPlayer"); setCrumb("Connecting…"); updateFavBtn();
+  $("#rail").innerHTML = '<div class="loading">Connecting to portal…</div>'; $("#items").innerHTML = "";
+  showMsg(p.type === "stalker" ? "Logging in" : "Loading channels", p.type === "stalker" ? `${p.stb.model} · ${p.stb.mac}` : "");
+  setStat("Connecting");
+  try{
+    cur.tv = await SRC.tv(p);
+    if (!cur.tv.length) throw new Error("The portal returned no channels for this account.");
+    buildTvGroups(); setCrumb(); renderRail(); renderItems(); showMsg("Pick a channel", "Choose a group, then a channel."); setStat("Ready", "ok");
+    const last = store.get("iptv.last." + p.id);
+    if (p.player.autoplayLast && last){ const c = cur.tv.find(x => x.key === last); if (c) play(c); }
+  }catch(e){
+    setStat("Error", "err"); setCrumb("Not connected");
+    $("#rail").innerHTML = ""; $("#items").innerHTML = `<div class="empty">Couldn't load channels.</div>`;
+    showMsg("Connection failed", e.message, true);
+  }
+}
+function setCrumb(state){
+  const p = cur.profile;
+  const bits = [`<strong>${esc(p.name)}</strong>`];
+  if (state) bits.push(esc(state));
+  else bits.push(`${cur.tv.length} channels`);
+  if (cur.account?.expires) bits.push(`Expires ${esc(cur.account.expires)}`);
+  $("#crumb").innerHTML = bits.join(" · ");
+  document.title = `${p.name} · Pujiverse IPTV`;
+}
+function buildTvGroups(){
+  const gs = [...new Set(cur.tv.map(c => c.group))];
+  cur.groups = ["All", "Favorites", ...gs];
+}
+
+/* =================== Rendering =================== */
+function tvVisible(){
+  const q = cur.query.toLowerCase();
+  return cur.tv.filter(c => (cur.group === "All" || (cur.group === "Favorites" ? favs.has(favKey(c)) : c.group === cur.group)) && (!q || c.name.toLowerCase().includes(q)));
+}
+const favKey = c => cur.profile.id + "|" + c.key;
+function countOf(g){ return g === "All" ? cur.tv.length : g === "Favorites" ? cur.tv.filter(c => favs.has(favKey(c))).length : cur.tv.filter(c => c.group === g).length; }
+
+function renderRail(){
+  const rail = $("#rail"), sel = $("#gsel"); rail.innerHTML = ""; sel.innerHTML = "";
+  if (cur.mode === "tv"){
+    $("#railLabel").textContent = "Groups";
+    for (const g of cur.groups){
+      const n = countOf(g);
+      const b = document.createElement("button"); b.className = "group" + (g === cur.group ? " on" : "");
+      b.innerHTML = `<span>${esc(g)}</span><span class="n">${n}</span>`;
+      b.onclick = () => { cur.group = g; renderRail(); renderItems(); };
+      rail.appendChild(b); sel.add(new Option(`${g} (${n})`, g, false, g === cur.group));
+    }
+  } else {
+    $("#railLabel").textContent = "Categories";
+    if (!cur.vodGroups.length){ rail.innerHTML = '<div class="loading">No movie categories.</div>'; return; }
+    for (const g of cur.vodGroups){
+      const b = document.createElement("button"); b.className = "group" + (g.id === cur.group ? " on" : "");
+      b.innerHTML = `<span>${esc(g.title)}</span>`;
+      b.onclick = () => openVodCat(g.id);
+      rail.appendChild(b); sel.add(new Option(g.title, g.id, false, g.id === cur.group));
+    }
+  }
+}
+$("#gsel").onchange = e => { if (cur.mode === "tv"){ cur.group = e.target.value; renderRail(); renderItems(); } else openVodCat(e.target.value); };
+
+function initials(n){ return String(n).replace(/[^\p{L}\p{N} ]/gu, "").split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "TV"; }
+
+function renderItems(){
+  const box = $("#items"); box.innerHTML = "";
+  let list;
+  if (cur.mode === "tv") list = tvVisible();
+  else { const q = cur.query.toLowerCase(); list = cur.vodItems.filter(x => !q || x.name.toLowerCase().includes(q)); }
+  cur.list = list;
+  if (!list.length){ box.innerHTML = `<div class="empty">${cur.mode === "vod" && !cur.group ? "Pick a category." : "Nothing matches."}</div>`; return; }
+  const frag = document.createDocumentFragment();
+  for (const c of list.slice(0, 3000)){
+    const row = document.createElement("div");
+    row.className = "ch" + (cur.playing && cur.playing.key === c.key ? " on" : "");
+    row.tabIndex = 0; row.setAttribute("role", "button");
+    row.innerHTML = `<span class="num">${cur.mode === "tv" ? c.num : ""}</span><span class="logo"></span><span class="nm">${esc(c.name)}${c.sub ? `<small>${esc(c.sub)}</small>` : ""}</span>${cur.mode === "tv" ? `<button class="fav ${favs.has(favKey(c)) ? "on" : ""}" title="Favorite" aria-label="Favorite">★</button>` : "<span></span>"}`;
+    const logo = row.querySelector(".logo");
+    if (c.logo){ const im = new Image(); im.loading = "lazy"; im.alt = ""; im.referrerPolicy = "no-referrer"; im.src = c.logo; im.onerror = () => { logo.textContent = initials(c.name); }; logo.appendChild(im); }
+    else logo.textContent = initials(c.name);
+    const fb = row.querySelector(".fav");
+    if (fb) fb.onclick = e => { e.stopPropagation(); toggleFav(c); };
+    row.onclick = () => play(c);
+    row.onkeydown = e => { if (e.key === "Enter") play(c); };
+    frag.appendChild(row);
+  }
+  box.appendChild(frag);
+  if (list.length > 3000){ const m = document.createElement("div"); m.className = "empty"; m.textContent = `Showing 3,000 of ${list.length}. Search or pick a group to narrow it down.`; box.appendChild(m); }
+  if (cur.mode === "vod" && !cur.vodDone && !cur.query){
+    const b = document.createElement("button"); b.className = "btn more"; b.textContent = "Load more";
+    b.onclick = () => loadVodPage(); box.appendChild(b);
+  }
+}
+function toggleFav(c){
+  const k = favKey(c); favs.has(k) ? favs.delete(k) : favs.add(k);
+  store.set("iptv.favs", [...favs]); renderRail(); renderItems(); updateFavBtn();
+}
+function updateFavBtn(){ const c = cur.playing; const b = $("#favBtn"); b.hidden = !c || !c.live; if (c) b.textContent = favs.has(favKey(c)) ? "★ Favorited" : "☆ Favorite"; }
+$("#q").oninput = e => { cur.query = e.target.value; renderItems(); };
+
+/* Modes */
+document.querySelectorAll(".mode").forEach(m => m.onclick = async () => {
+  if (cur.mode === m.dataset.mode) return;
+  cur.mode = m.dataset.mode; cur.query = ""; $("#q").value = "";
+  document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x === m));
+  if (cur.mode === "tv"){ cur.group = "All"; renderRail(); renderItems(); return; }
+  cur.group = ""; cur.vodItems = []; $("#rail").innerHTML = '<div class="loading">Loading categories…</div>'; $("#items").innerHTML = "";
+  try{ if (!cur.vodGroups.length) cur.vodGroups = await SRC.vodGroups(cur.profile); renderRail(); renderItems(); }
+  catch(e){ $("#rail").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+});
+async function openVodCat(id){
+  cur.group = id; cur.vodItems = []; cur.vodPage = 0; cur.vodDone = false; renderRail();
+  $("#items").innerHTML = '<div class="loading">Loading movies…</div>';
+  await loadVodPage();
+}
+async function loadVodPage(){
+  const id = cur.group, page = cur.vodPage + 1;
+  try{
+    const r = await SRC.vodPage(cur.profile, id, page);
+    if (cur.group !== id) return;
+    cur.vodItems.push(...r.items); cur.vodPage = page; cur.vodDone = r.done || !r.items.length; renderItems();
+  }catch(e){ $("#items").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* =================== Playback =================== */
+function setStat(t, kind){ $("#stat").textContent = t; $("#dot").className = "dot" + (kind ? " " + kind : ""); }
+function showMsg(title, body){
+  const m = $("#msg"); if (!title){ m.hidden = true; return; }
+  m.hidden = false; m.innerHTML = `<div><strong>${esc(title)}</strong><span>${esc(body || "")}</span></div>`;
+}
+function stopPlayback(){
+  cur.token++;
+  if (hls){ hls.destroy(); hls = null; }
+  if (ts){ try{ ts.destroy(); }catch{} ts = null; }
+  video.removeAttribute("src"); try{ video.load(); }catch{}
+}
+function pickEngine(url, live, pref){
+  if (pref && pref !== "auto") return pref;
+  const raw = decodeURIComponent(url);
+  if (/\.m3u8(\?|$|&)|extension=m3u8|mpegurl/i.test(raw)) return "hls";
+  if (/\.ts(\?|$|&)|extension=ts/i.test(raw)) return "mpegts";
+  if (/\.(mp4|mkv|webm|mov|avi)(\?|$|&)/i.test(raw)) return "native";
+  return live ? "mpegts" : "native";
+}
+const BUF = { low: { hls: 8, stash: false, size: 128 }, normal: { hls: 30, stash: true, size: 384 }, high: { hls: 60, stash: true, size: 1024 } };
+
+async function play(item, isRetry){
+  const p = cur.profile;
+  stopPlayback(); const my = cur.token;
+  if (!isRetry) cur.retries = 0;
+  cur.playing = item;
+  osd(item); updateFavBtn(); renderItems();
+  document.querySelector(".ch.on")?.scrollIntoView({ block: "nearest" });
+  if (item.live) store.set("iptv.last." + p.id, item.key);
+  showMsg(isRetry ? "Reconnecting…" : "Tuning…", item.name); setStat("Connecting");
+
+  let url;
+  try{ url = await SRC.resolve(p, item); }
+  catch(e){ if (my === cur.token) fail(item, e.message); return; }
+  if (my !== cur.token) return;
+
+  const engine = pickEngine(url, item.live, p.player.engine);
+  const b = BUF[p.player.buffer] || BUF.normal;
+  const onFatal = why => { if (my === cur.token) fail(item, why); };
+
+  if (engine === "hls" && window.Hls && Hls.isSupported()){
+    hls = new Hls({ lowLatencyMode: p.player.buffer === "low", maxBufferLength: b.hls, backBufferLength: 30 });
+    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    hls.on(Hls.Events.ERROR, (_, d) => {
+      if (!d.fatal) return;
+      if (d.type === Hls.ErrorTypes.MEDIA_ERROR){ hls.recoverMediaError(); return; }
+      onFatal(d.details === "manifestLoadError" ? "The stream server refused the request." : `Stream error: ${d.details}.`);
+    });
+    hls.loadSource(url); hls.attachMedia(video);
+  } else if (engine === "mpegts" && window.mpegts && mpegts.getFeatureList().mseLivePlayback){
+    ts = mpegts.createPlayer({ type: "mpegts", isLive: item.live, url }, { enableStashBuffer: b.stash, stashInitialSize: b.size * 1024, liveBufferLatencyChasing: p.player.buffer === "low" });
+    ts.attachMediaElement(video); ts.load();
+    ts.on(mpegts.Events.ERROR, (t, d) => onFatal(`Stream error: ${d || t}.`));
+    video.play().catch(() => {});
+  } else {
+    video.src = url; video.play().catch(() => {});
+  }
+  if (item.live && item.chId && p.type === "stalker") loadEpg(item, my);
+}
+
+function fail(item, why){
+  const p = cur.profile;
+  if (item.alt && !item._triedAlt){ item._triedAlt = true; const swap = item.url; item.url = item.alt; item.alt = swap; play(item, true); return; }
+  if (p.player.reconnect && cur.retries < 3){
+    cur.retries++; setStat(`Retry ${cur.retries}/3`);
+    const my = cur.token; setTimeout(() => { if (my === cur.token) play(item, true); }, 1500 * cur.retries); return;
+  }
+  setStat("Error", "err");
+  let extra = "";
+  if (!p.adv.proxyStreams && location.protocol === "https:") extra = " If the stream uses http://, turn on Play streams through the backend in Advanced settings.";
+  showMsg("Can't play this", why + extra);
+}
+
+video.addEventListener("playing", () => { showMsg(null); cur.retries = 0; setStat(video.videoWidth ? `${video.videoWidth}×${video.videoHeight}` : "Playing", "ok"); });
+video.addEventListener("waiting", () => setStat("Buffering"));
+video.addEventListener("error", () => { if (!hls && !ts && cur.playing && video.getAttribute("src")) fail(cur.playing, "The browser can't decode this format, or the server blocked it."); });
+video.addEventListener("ended", () => { if (cur.playing?.live && cur.profile.player.reconnect) play(cur.playing, true); });
+
+async function loadEpg(item, my){
+  try{
+    const e = await stalker("epg", { id: item.chId });
+    if (my !== cur.token || !e.length) return;
+    const fmt = s => s ? String(s).slice(-5) : "";
+    $("#osdEpg").innerHTML = e.slice(0, 2).map((x, i) => `<div><span>${i ? "Next" : "Now"} ${esc(fmt(x.start))}</span> ${esc(x.title)}</div>`).join("");
+  }catch{}
+}
+function osd(c){
+  $("#osdNum").textContent = c.live ? c.num : ""; $("#osdName").textContent = c.name;
+  $("#osdGroup").textContent = c.live ? c.group : (c.sub || "Movie"); $("#osdEpg").innerHTML = "";
+  $("#osdLive").hidden = !c.live;
+  const o = $("#osd"); o.classList.remove("hide"); clearTimeout(osdTimer);
+  osdTimer = setTimeout(() => o.classList.add("hide"), 5000);
+}
+function step(d){
+  const list = cur.list; if (!list.length) return;
+  let i = list.findIndex(c => cur.playing && c.key === cur.playing.key);
+  i = i < 0 ? 0 : (i + d + list.length) % list.length;
+  play(list[i]);
+}
+$("#prev").onclick = () => step(-1);
+$("#next").onclick = () => step(1);
+$("#favBtn").onclick = () => { if (cur.playing) toggleFav(cur.playing); };
+function fullscreen(){
+  if (document.fullscreenElement) return document.exitFullscreen().catch(() => {});
+  const el = $("#screen");
+  (el.requestFullscreen ? el.requestFullscreen() : Promise.reject()).catch(() => video.webkitEnterFullscreen?.());
+}
+$("#fsBtn").onclick = fullscreen;
+
+document.addEventListener("keydown", e => {
+  if ($("#vPlayer").hidden || e.target.matches("input,select,textarea")) return;
+  const k = e.key;
+  if (k === "ArrowUp" || k === "PageUp"){ e.preventDefault(); step(-1); }
+  else if (k === "ArrowDown" || k === "PageDown"){ e.preventDefault(); step(1); }
+  else if (k === "f" || k === "F"){ fullscreen(); }
+  else if (k === "m" || k === "M"){ video.muted = !video.muted; toast(video.muted ? "Muted" : "Sound on"); }
+  else if (k === "i" || k === "I"){ if (cur.playing) osd(cur.playing); }
+  else if (k === "Escape" && !document.fullscreenElement){ $("#hdrBtn").click(); }
+  else if (/^[0-9]$/.test(k) && cur.mode === "tv"){
+    jumpBuf = (jumpBuf + k).slice(-5); const j = $("#jump"); j.textContent = jumpBuf; j.hidden = false;
+    clearTimeout(jumpTimer);
+    jumpTimer = setTimeout(() => { const n = parseInt(jumpBuf, 10); j.hidden = true; jumpBuf = ""; const c = cur.tv.find(x => x.num === n); c ? play(c) : toast(`No channel ${n}`); }, 1300);
+  }
+});
+
+/* =================== Start =================== */
+function tick(){ $("#clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+tick(); setInterval(tick, 15000);
+renderProfiles(); show("vProfiles");
+</script>
+</body>
+</html>

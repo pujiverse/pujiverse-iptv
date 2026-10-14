@@ -1,0 +1,13 @@
+{
+  "name": "pujiverse-iptv",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser IPTV player with StbEmu-style profiles (MAG/Stalker portals, Xtream, M3U)",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
