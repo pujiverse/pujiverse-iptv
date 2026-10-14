@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Pujiverse IPTV Bridge",
+  "version": "1.0.0",
+  "description": "Lets iptv.pujiverse.com reach your own IPTV portal and streams from your own internet connection.",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "permissions": ["declarativeNetRequestWithHostAccess"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "sw.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://iptv.pujiverse.com/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["frame.html"],
+      "matches": ["https://iptv.pujiverse.com/*", "http://localhost/*", "http://127.0.0.1/*"]
+    }
+  ]
+}

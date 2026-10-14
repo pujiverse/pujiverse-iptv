@@ -20,6 +20,11 @@ http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
       return res.end(html);
     }
+    if (url.pathname === "/iptv-bridge.zip") {
+      const zip = await readFile(new URL("./iptv-bridge.zip", import.meta.url));
+      res.writeHead(200, { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="iptv-bridge.zip"' });
+      return res.end(zip);
+    }
     const handler = routes[url.pathname];
     if (!handler) { res.writeHead(404); return res.end("Not found"); }
 

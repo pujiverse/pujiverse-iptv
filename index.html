@@ -35,6 +35,7 @@ header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:
 .crumb strong{color:var(--fg);font-weight:500}
 .clock{font:500 15px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--dim)}
 .btn{background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:7px 12px;white-space:nowrap}
+a.btn{text-decoration:none;display:inline-block}
 .btn:hover{border-color:var(--dim)}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
@@ -136,6 +137,14 @@ video{width:100%;height:100%;display:block;background:#000}
 kbd{font:500 11px var(--f-mono);border:1px solid var(--line);border-radius:3px;padding:1px 5px;background:var(--raise)}
 .gsel{display:none;margin-top:8px}
 .loading{padding:18px 14px;color:var(--dim)}
+.bframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+.bridge{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.bridge.ok{border-color:var(--ok)}
+.bridge h2{margin:0;font:700 18px var(--f-display);letter-spacing:.04em;text-transform:uppercase;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.bridge p,.bridge ol{margin:0;color:var(--dim);max-width:70ch}
+.bridge ol{padding-left:20px;display:flex;flex-direction:column;gap:3px}
+.bridge code{font-family:var(--f-mono);font-size:12px;color:var(--fg);background:var(--raise);padding:1px 5px;border-radius:3px}
+.bridge .row{display:flex;gap:8px;flex-wrap:wrap}
 .toast{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--raise);border:1px solid var(--line);padding:10px 16px;border-radius:8px;z-index:50;max-width:calc(100vw - 32px)}
 
 @media (max-width:900px){
@@ -181,6 +190,7 @@ kbd{font:500 11px var(--f-mono);border:1px solid var(--line);border-radius:3px;p
         <label class="btn" for="importFile">Import profiles</label>
         <input type="file" id="importFile" accept=".json,application/json" hidden>
       </div>
+      <div class="bridge" id="bridgeBox"></div>
       <div class="plist" id="plist"></div>
     </div>
   </section>
@@ -258,6 +268,7 @@ const FIRMWARES = [["218","0.2.18 (default)"],["216","0.2.16"],["250","2.50"],["
 const RESOLUTIONS = [["1280x720","1280 × 720 (720p)"],["1920x1080","1920 × 1080 (1080p)"],["3840x2160","3840 × 2160 (4K)"]];
 const LANGS = [["en","English"],["ru","Русский"],["uk","Українська"],["de","Deutsch"],["fr","Français"],["es","Español"],["it","Italiano"],["pt","Português"],["nl","Nederlands"],["pl","Polski"],["tr","Türkçe"],["ar","العربية"],["hi","हिन्दी"],["te","తెలుగు"],["ta","தமிழ்"],["ur","اردو"],["el","Ελληνικά"],["ro","Română"]];
 const TYPES = [["stalker","MAG / Stalker portal (MAC address)"],["xtream","Xtream Codes (username & password)"],["m3u","M3U playlist URL"]];
+const CONNS = [["auto","Automatic (extension if installed, otherwise backend server)"],["extension","IPTV Bridge extension"],["server","Backend server"]];
 const ENGINES = [["auto","Automatic"],["hls","HLS (hls.js)"],["mpegts","MPEG-TS (mpegts.js)"],["native","Browser built-in"]];
 const BUFFERS = [["low","Low latency (smaller buffer)"],["normal","Normal"],["high","Large (smoother on weak networks)"]];
 const ASPECTS = [["contain","Fit (keep aspect ratio)"],["cover","Zoom to fill"],["fill","Stretch"]];
@@ -282,7 +293,7 @@ function newProfile(){
     portal: { url: "", lang: "en", username: "", password: "" },
     stb: { model: "MAG250", image: "218", ua: "", resolution: "1920x1080", mac: genMac(), sn: "", deviceId: "", deviceId2: "", signature: "" },
     player: { engine: "auto", buffer: "normal", aspect: "contain", reconnect: true, volume: 100, autoplayLast: true },
-    adv: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", backend: "", key: "", proxyStreams: true, timeout: 15, vod: true }
+    adv: { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", conn: "auto", backend: "", key: "", proxyStreams: true, timeout: 15, vod: true }
   };
 }
 const get = (o, path) => path.split(".").reduce((a, k) => a?.[k], o);
@@ -325,10 +336,12 @@ const SECTIONS = [
   ]},
   { id: "adv", title: "Advanced settings", sub: p => p.adv.tz, fields: [
     { k: "adv.tz", label: "Time zone", type: "select", opts: () => TZS.map(t => [t, t]) },
-    { k: "adv.backend", label: "Backend server URL", type: "url", mono: true, ph: () => defaultBackend() || "https://your-iptv-backend.example.com",
+    { k: "adv.conn", label: "Connect through", type: "select", opts: CONNS,
+      hint: "The IPTV Bridge extension connects from your own internet, so portals that block servers still work. The backend server is for setups without the extension." },
+    { k: "adv.backend", label: "Backend server URL", type: "url", mono: true, show: p => (p.adv.conn || "auto") !== "extension", ph: () => defaultBackend() || "https://your-iptv-backend.example.com",
       hint: "The server that logs into the portal and relays streams. Leave empty when this page is opened from that server." },
-    { k: "adv.key", label: "Backend access key", type: "password", hint: "Only if the backend was started with an ACCESS_KEY." },
-    { k: "adv.proxyStreams", label: "Play streams through the backend", type: "check", hint: "Needed for http:// streams, providers that block browsers, and most MAG portals." },
+    { k: "adv.key", label: "Backend access key", type: "password", show: p => (p.adv.conn || "auto") !== "extension", hint: "Only if the backend was started with an ACCESS_KEY." },
+    { k: "adv.proxyStreams", label: "Play streams through the backend", type: "check", show: p => (p.adv.conn || "auto") !== "extension", hint: "Needed for http:// streams, providers that block browsers, and most MAG portals." },
     { k: "adv.timeout", label: "Connection timeout (seconds)", type: "number", min: 3, max: 60 },
     { k: "adv.vod", label: "Show Movies (video on demand)", type: "check", show: p => p.type !== "m3u" },
   ]},
@@ -375,6 +388,7 @@ function show(view){
 }
 
 function renderProfiles(){
+  renderBridgeBox();
   $("#crumb").innerHTML = `<strong>${profiles.length}</strong> profile${profiles.length === 1 ? "" : "s"}`;
   const box = $("#plist"); box.innerHTML = "";
   if (!profiles.length){
@@ -538,6 +552,84 @@ $("#cancelEdit").onclick = () => { renderProfiles(); show("vProfiles"); };
 $("#saveOnly").onclick = () => { const p = commit(); if (p){ toast("Saved"); renderProfiles(); show("vProfiles"); } };
 $("#saveOpen").onclick = () => { const p = commit(); if (p) openPlayer(p); };
 
+/* =================== IPTV Bridge extension =================== */
+const bridge = { ok: false, frame: "", version: "", seq: 0, pending: new Map() };
+const PM_TARGET = location.origin === "null" ? "*" : location.origin;
+let bframe = null, bframeReady = null, bframeToken = 0;
+window.addEventListener("message", e => {
+  const d = e.data;
+  if (!d || typeof d !== "object") return;
+  if (e.source === window && d.__iptv === "hello"){
+    const was = bridge.ok; Object.assign(bridge, { ok: true, frame: d.frame, version: d.version });
+    if (!was){ renderBridgeBox(); }
+  } else if (e.source === window && d.__iptv === "res"){
+    const p = bridge.pending.get(d.id); if (!p) return;
+    bridge.pending.delete(d.id); d.ok ? p.res(d.data) : p.rej(new Error(d.error || "Extension error."));
+  } else if (bframe && e.source === bframe.contentWindow && d.__iptvFrame){
+    onFrameMsg(d);
+  }
+});
+window.postMessage({ __iptv: "req", op: "ping" }, PM_TARGET);
+function bridgeCall(op, args){
+  return new Promise((res, rej) => {
+    const id = ++bridge.seq; bridge.pending.set(id, { res, rej });
+    window.postMessage({ __iptv: "req", id, op, args }, PM_TARGET);
+    setTimeout(() => { if (bridge.pending.delete(id)) rej(new Error("The IPTV Bridge extension didn't answer. Reload the page.")); }, 90000);
+  });
+}
+const INSTALL_MSG = "This profile is set to use the IPTV Bridge extension, but it isn't installed in this browser. Install it from the Profiles page.";
+function useBridge(p){
+  const mode = p.adv.conn || "auto";
+  if (mode === "server") return false;
+  if (mode === "extension" && !bridge.ok) throw new Error(INSTALL_MSG);
+  return bridge.ok;
+}
+function renderBridgeBox(){
+  const box = $("#bridgeBox"); if (!box) return;
+  if (bridge.ok){
+    box.className = "bridge ok";
+    box.innerHTML = `<h2>IPTV Bridge <span class="chip on">Connected · v${esc(bridge.version)}</span></h2>
+      <p>Your portals and streams are reached from this computer's own internet connection. Nothing passes through the Pujiverse server.</p>`;
+    return;
+  }
+  box.className = "bridge";
+  box.innerHTML = `<h2>Install the IPTV Bridge <span class="chip">Not installed</span></h2>
+    <p>Most MAG portals block requests from web servers. The free IPTV Bridge extension lets this site sign in to your portal and play streams from your own internet connection, like your TV box does. Your MAC address stays in your browser.</p>
+    <ol>
+      <li>Download the extension and unzip it.</li>
+      <li>Open <code>chrome://extensions</code> (or <code>edge://extensions</code>) and turn on <b>Developer mode</b>.</li>
+      <li>Click <b>Load unpacked</b> and pick the unzipped <code>iptv-bridge</code> folder.</li>
+      <li>Reload this page.</li>
+    </ol>
+    <div class="row"><a class="btn primary" href="iptv-bridge.zip" download>Download IPTV Bridge</a></div>`;
+}
+
+function ensureFrame(){
+  if (bframe && bframeReady) return bframeReady;
+  bframe = document.createElement("iframe");
+  bframe.className = "bframe"; bframe.allow = "autoplay; fullscreen"; bframe.title = "Player";
+  bframeReady = new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error("The IPTV Bridge player didn't load. Reload the page.")), 10000);
+    bframe._ready = () => { clearTimeout(t); res(); };
+  });
+  bframe.src = bridge.frame;
+  $("#screen").insertBefore(bframe, $("#msg"));
+  return bframeReady;
+}
+function frameCmd(m){ if (bframe) bframe.contentWindow.postMessage({ __iptvCmd: true, ...m }, new URL(bridge.frame).origin); }
+function useFrameView(on){
+  video.hidden = on;
+  if (bframe) bframe.hidden = !on;
+}
+function onFrameMsg(d){
+  if (d.type === "ready"){ bframe._ready?.(); return; }
+  if (d.token !== bframeToken || !cur.playing) return;
+  if (d.type === "playing"){ showMsg(null); cur.retries = 0; setStat(d.w ? `${d.w}×${d.h}` : "Playing", "ok"); }
+  else if (d.type === "waiting") setStat("Buffering");
+  else if (d.type === "error") fail(cur.playing, d.detail);
+  else if (d.type === "ended" && cur.playing.live && cur.profile.player.reconnect) play(cur.playing, true);
+}
+
 /* =================== Backend helpers =================== */
 function defaultBackend(){ return /^https?:$/.test(location.protocol) ? location.origin : ""; }
 function backendOf(p){ return ((p.adv.backend || "").trim() || defaultBackend()).replace(/\/+$/, ""); }
@@ -547,7 +639,7 @@ function needBackend(p){
   return b;
 }
 function proxied(p, url, withUA){
-  if (!p.adv.proxyStreams) return url;
+  if (useBridge(p) || !p.adv.proxyStreams) return url;
   const b = needBackend(p);
   let u = `${b}/api/proxy?url=${encodeURIComponent(url)}`;
   if (withUA) u += `&ua=${encodeURIComponent(p.stb.ua || magUA(p.stb.model))}`;
@@ -555,26 +647,35 @@ function proxied(p, url, withUA){
   return u;
 }
 async function stalker(action, params = {}){
-  const p = cur.profile, b = needBackend(p);
-  let r;
-  try{
-    r = await fetch(`${b}/api/stalker`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(p.adv.key ? { "X-Access-Key": p.adv.key } : {}) },
-      body: JSON.stringify({
-        profile: { portal: p.portal.url, lang: p.portal.lang, tz: p.adv.tz, mac: p.stb.mac, sn: p.stb.sn, deviceId: p.stb.deviceId,
-                   deviceId2: p.stb.deviceId2, signature: p.stb.signature, model: p.stb.model, image: p.stb.image, ua: p.stb.ua, timeout: p.adv.timeout },
-        session: cur.session, action, params
-      })
-    });
-  }catch{ throw new Error("Can't reach the backend server. Check Backend server URL in Advanced settings."); }
-  let j; try{ j = await r.json(); }catch{ throw new Error(`Backend error (HTTP ${r.status}).`); }
+  const p = cur.profile;
+  const body = {
+    profile: { portal: p.portal.url, lang: p.portal.lang, tz: p.adv.tz, mac: p.stb.mac, sn: p.stb.sn, deviceId: p.stb.deviceId,
+               deviceId2: p.stb.deviceId2, signature: p.stb.signature, model: p.stb.model, image: p.stb.image, ua: p.stb.ua, timeout: p.adv.timeout },
+    session: cur.session, action, params
+  };
+  let j;
+  if (useBridge(p)){
+    j = await bridgeCall("stalker", body);
+  } else {
+    const b = needBackend(p);
+    let r;
+    try{
+      r = await fetch(`${b}/api/stalker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(p.adv.key ? { "X-Access-Key": p.adv.key } : {}) },
+        body: JSON.stringify(body)
+      });
+    }catch{ throw new Error("Can't reach the backend server. Check Backend server URL in Advanced settings."); }
+    try{ j = await r.json(); }catch{ throw new Error(`Backend error (HTTP ${r.status}).`); }
+    if (j.error && /firewall|internet address/.test(j.error) && !bridge.ok) j.error += " Install the IPTV Bridge extension (see the Profiles page) so the portal is reached from your own internet.";
+  }
   if (j.error) throw new Error(j.error);
   if (j.session) cur.session = j.session;
   if (j.account) cur.account = j.account;
   return j.data;
 }
 async function fetchText(p, url){
+  if (useBridge(p)) return bridgeCall("text", { url });
   let r;
   try{ r = await fetch(proxied(p, url)); }catch{ throw new Error(p.adv.proxyStreams ? "Can't reach the backend server." : "The request was blocked. Turn on Play streams through the backend in Advanced settings."); }
   if (!r.ok) throw new Error(`Server answered ${r.status}.`);
@@ -610,6 +711,7 @@ function parseM3U(text){
 const SRC = {
   async tv(p){
     if (p.type === "stalker"){
+      await stalker("login");
       const [genres, chans] = await Promise.all([stalker("genres").catch(() => []), stalker("channels")]);
       const gmap = Object.fromEntries(genres.map(g => [g.id, g.title]));
       chans.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
@@ -806,6 +908,7 @@ function showMsg(title, body){
 }
 function stopPlayback(){
   cur.token++;
+  if (bframe){ bframeToken = cur.token; frameCmd({ type: "stop", token: cur.token }); }
   if (hls){ hls.destroy(); hls = null; }
   if (ts){ try{ ts.destroy(); }catch{} ts = null; }
   video.removeAttribute("src"); try{ video.load(); }catch{}
@@ -839,6 +942,22 @@ async function play(item, isRetry){
   const b = BUF[p.player.buffer] || BUF.normal;
   const onFatal = why => { if (my === cur.token) fail(item, why); };
 
+  let viaBridge = false;
+  try{ viaBridge = useBridge(p); }catch(e){ onFatal(e.message); return; }
+  if (viaBridge){
+    try{
+      await ensureFrame();
+      if (p.type === "stalker") await bridgeCall("prepare", { url, ua: p.stb.ua || magUA(p.stb.model) }).catch(() => {});
+    }catch(e){ onFatal(e.message); return; }
+    if (my !== cur.token) return;
+    useFrameView(true); bframeToken = my;
+    frameCmd({ type: "play", token: my, url, live: !!item.live, engine, hlsBuffer: b.hls, stash: b.stash, stashKB: b.size,
+               lowLatency: p.player.buffer === "low", aspect: p.player.aspect, volume: Math.max(0, Math.min(1, (Number(p.player.volume) || 100) / 100)) });
+    if (item.live && item.chId && p.type === "stalker") loadEpg(item, my);
+    return;
+  }
+  useFrameView(false);
+
   if (engine === "hls" && window.Hls && Hls.isSupported()){
     hls = new Hls({ lowLatencyMode: p.player.buffer === "low", maxBufferLength: b.hls, backBufferLength: 30 });
     hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
@@ -868,7 +987,7 @@ function fail(item, why){
   }
   setStat("Error", "err");
   let extra = "";
-  if (!p.adv.proxyStreams && location.protocol === "https:") extra = " If the stream uses http://, turn on Play streams through the backend in Advanced settings.";
+  if (!bridge.ok && !p.adv.proxyStreams && location.protocol === "https:") extra = " If the stream uses http://, turn on Play streams through the backend in Advanced settings.";
   showMsg("Can't play this", why + extra);
 }
 
@@ -914,7 +1033,7 @@ document.addEventListener("keydown", e => {
   if (k === "ArrowUp" || k === "PageUp"){ e.preventDefault(); step(-1); }
   else if (k === "ArrowDown" || k === "PageDown"){ e.preventDefault(); step(1); }
   else if (k === "f" || k === "F"){ fullscreen(); }
-  else if (k === "m" || k === "M"){ video.muted = !video.muted; toast(video.muted ? "Muted" : "Sound on"); }
+  else if (k === "m" || k === "M"){ if (bframe && !bframe.hidden){ frameCmd({ type: "mute" }); toast("Mute toggled"); } else { video.muted = !video.muted; toast(video.muted ? "Muted" : "Sound on"); } }
   else if (k === "i" || k === "I"){ if (cur.playing) osd(cur.playing); }
   else if (k === "Escape" && !document.fullscreenElement){ $("#hdrBtn").click(); }
   else if (/^[0-9]$/.test(k) && cur.mode === "tv"){

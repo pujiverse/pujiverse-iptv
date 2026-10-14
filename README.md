@@ -17,7 +17,24 @@ The player has **Live TV** (groups, numbered channels, favorites, now/next EPG) 
 
 MAG/Stalker portals identify the box by a `mac=` cookie, a MAG user agent and an `X-User-Agent` header. Browsers are not allowed to send those, so `server.js` does the portal login (handshake → get_profile) and relays the streams. The same server also fixes CORS and lets an https page play `http://` streams.
 
-## Run it at home (needed for portals that block cloud servers)
+## IPTV Bridge extension (recommended for everyone)
+
+Most MAG portals (glotv.me included) block web servers like Vercel. The **IPTV Bridge** browser extension fixes this for every visitor: iptv.pujiverse.com sends portal requests to the extension, and the extension makes them from the visitor's own internet connection, with the MAC cookie and MAG user agent the portal expects. Streams also play from the visitor's connection, inside a small player frame that belongs to the extension.
+
+- Each user's MAC address and video never pass through your server, and you pay no video bandwidth.
+- Install today: the Profiles page has a **Download IPTV Bridge** button (`iptv-bridge.zip`). Unzip it, open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, click Load unpacked, pick the `iptv-bridge` folder, reload the site.
+- For the general public, publish the `extension/` folder to the Chrome Web Store (one-time $5 developer fee) and Edge Add-ons (free). Then installing is one click.
+- Each profile's *Advanced settings → Connect through* chooses Automatic (extension if installed), the extension only, or the backend server.
+- The extension only works on `https://iptv.pujiverse.com`, `http://localhost` and `http://127.0.0.1`. To use another domain, add it in `extension/manifest.json` (content_scripts and web_accessible_resources) and in the `ALLOWED` lists in `extension/sw.js` and `extension/frame.js`.
+- `extension/lib/` is a copy of `lib/stalker.js` and `lib/common.js`. After changing those, copy them again and rebuild `iptv-bridge.zip`:
+
+```bash
+cp lib/stalker.js lib/common.js extension/lib/
+mkdir -p /tmp/pack && rm -rf /tmp/pack/iptv-bridge && cp -r extension /tmp/pack/iptv-bridge
+(cd /tmp/pack && zip -qr - iptv-bridge) > iptv-bridge.zip
+```
+
+## Run it at home (only if you don't use the extension)
 
 Many IPTV portals, including ones behind Cloudflare, block data-center addresses such as Vercel, AWS and Google Cloud. If the player says the portal's firewall blocked the backend, run the backend on a computer on the same home internet as your TV:
 
