@@ -17,6 +17,16 @@ The player has **Live TV** (groups, numbered channels, favorites, now/next EPG) 
 
 MAG/Stalker portals identify the box by a `mac=` cookie, a MAG user agent and an `X-User-Agent` header. Browsers are not allowed to send those, so `server.js` does the portal login (handshake → get_profile) and relays the streams. The same server also fixes CORS and lets an https page play `http://` streams.
 
+## Run it at home (needed for portals that block cloud servers)
+
+Many IPTV portals, including ones behind Cloudflare, block data-center addresses such as Vercel, AWS and Google Cloud. If the player says the portal's firewall blocked the backend, run the backend on a computer on the same home internet as your TV:
+
+1. Install Node.js 18 or newer from nodejs.org.
+2. In this folder run `npm start`.
+3. Either open **http://localhost:8080** on that computer, or keep using https://iptv.pujiverse.com and set each profile's *Advanced settings → Backend server URL* to `http://localhost:8080`.
+
+The computer must stay on while you watch. To watch away from home, expose the home server with a tunnel such as Cloudflare Tunnel or Tailscale and use that address as the Backend server URL.
+
 ## Run it
 
 **On your own computer or a VPS (recommended for live TV):**
