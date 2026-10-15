@@ -553,6 +553,8 @@ $("#saveOnly").onclick = () => { const p = commit(); if (p){ toast("Saved"); ren
 $("#saveOpen").onclick = () => { const p = commit(); if (p) openPlayer(p); };
 
 /* =================== IPTV Bridge extension =================== */
+const BRIDGE_LATEST = "1.0.2";
+const verOld = v => { const a = String(v).split(".").map(Number), b = BRIDGE_LATEST.split(".").map(Number); for (let i = 0; i < 3; i++){ if ((a[i]||0) !== (b[i]||0)) return (a[i]||0) < (b[i]||0); } return false; };
 const bridge = { ok: false, frame: "", version: "", seq: 0, pending: new Map() };
 const PM_TARGET = location.origin === "null" ? "*" : location.origin;
 let bframe = null, bframeReady = null, bframeToken = 0;
@@ -586,6 +588,18 @@ function useBridge(p){
 }
 function renderBridgeBox(){
   const box = $("#bridgeBox"); if (!box) return;
+  if (bridge.ok && verOld(bridge.version)){
+    box.className = "bridge";
+    box.innerHTML = `<h2>Update the IPTV Bridge <span class="chip">v${esc(bridge.version)} → v${BRIDGE_LATEST}</span></h2>
+      <p>A newer version of the extension is available. Chrome doesn't update an unpacked extension by itself.</p>
+      <ol>
+        <li>Download the new version and unzip it over your old <code>iptv-bridge</code> folder, replacing the files.</li>
+        <li>Open <code>chrome://extensions</code> and click the reload icon on <b>Pujiverse IPTV Bridge</b>.</li>
+        <li>Reload this page.</li>
+      </ol>
+      <div class="row"><a class="btn primary" href="iptv-bridge.zip" download>Download IPTV Bridge v${BRIDGE_LATEST}</a></div>`;
+    return;
+  }
   if (bridge.ok){
     box.className = "bridge ok";
     box.innerHTML = `<h2>IPTV Bridge <span class="chip on">Connected · v${esc(bridge.version)}</span></h2>
@@ -669,7 +683,10 @@ async function stalker(action, params = {}){
     try{ j = await r.json(); }catch{ throw new Error(`Backend error (HTTP ${r.status}).`); }
     if (j.error && /firewall|internet address/.test(j.error) && !bridge.ok) j.error += " Install the IPTV Bridge extension (see the Profiles page) so the portal is reached from your own internet.";
   }
-  if (j.error) throw new Error(j.error);
+  if (j.error){
+    if (bridge.ok && verOld(bridge.version) && useBridge(p)) j.error += ` (Your IPTV Bridge is v${bridge.version}; update it to v${BRIDGE_LATEST} from the Profiles page.)`;
+    throw new Error(j.error);
+  }
   if (j.session) cur.session = j.session;
   if (j.account) cur.account = j.account;
   return j.data;
