@@ -553,7 +553,7 @@ $("#saveOnly").onclick = () => { const p = commit(); if (p){ toast("Saved"); ren
 $("#saveOpen").onclick = () => { const p = commit(); if (p) openPlayer(p); };
 
 /* =================== IPTV Bridge extension =================== */
-const BRIDGE_LATEST = "1.0.2";
+const BRIDGE_LATEST = "1.0.3";
 const verOld = v => { const a = String(v).split(".").map(Number), b = BRIDGE_LATEST.split(".").map(Number); for (let i = 0; i < 3; i++){ if ((a[i]||0) !== (b[i]||0)) return (a[i]||0) < (b[i]||0); } return false; };
 const bridge = { ok: false, frame: "", version: "", seq: 0, pending: new Map() };
 const PM_TARGET = location.origin === "null" ? "*" : location.origin;
