@@ -63,6 +63,7 @@ async function call(api, referer, p, token, query) {
   }
   const text = await r.text();
   if (/Authorization failed/i.test(text)) throw new PortalError("Authorization failed.", true);
+  if (/^\s*Unauthorized request/i.test(text)) { const e = new PortalError("The portal didn't accept the session (Unauthorized request).", true); e.unauthorized = true; throw e; }
   if (/cloudflare/i.test(text) && /blocked|Attention Required|challenge/i.test(text)) {
     throw new PortalError("The portal's firewall (Cloudflare) blocked this connection's internet address.");
   }
@@ -90,7 +91,7 @@ async function login(p) {
   if (!MAC_RE.test(p.mac || "")) throw new PortalError("MAC address must look like 00:1A:79:XX:XX:XX.");
   const n = normalize(p.portal);
   if (!hostAllowed(n.host)) throw new PortalError("This portal is not in the backend's allowed hosts.");
-  const referer = `${n.base}/c/`;
+  let referer = `${n.base}/c/`;
   let api = null, token = null, lastErr = null, authErr = null;
   const tried = [];
   for (const c of n.candidates) {
@@ -113,19 +114,67 @@ async function login(p) {
     throw new PortalError((lastErr ? lastErr.message : "Portal handshake failed. Check the portal URL.") + detail);
   }
 
+  // The portal page sits next to the API (…/stalker_portal/c/ for …/stalker_portal/server/load.php).
+  referer = api.replace(/\/(server\/load|portal)\.php$/i, "").replace(/\/server$/i, "") + "/c/";
+
   const model = p.model || "MAG250";
-  let prof = null;
-  try { prof = await call(api, referer, p, token, {
+  const ts = () => Math.floor(Date.now() / 1000);
+  const fullProfile = () => ({
     type: "stb", action: "get_profile", hd: 1,
     ver: `ImageDescription: 0.2.18-r23-${model.replace(/^MAG/i, "")}; ImageDate: Wed Aug 29 10:49:53 EEST 2018; PORTAL version: 5.6.2; API Version: JS API version: 343; STB API version: 146; Player Engine version: 0x58c`,
     num_banks: 2, sn: p.sn || "", stb_type: model, client_type: "STB", image_version: p.image || "218",
     video_out: "hdmi", device_id: p.deviceId || "", device_id2: p.deviceId2 || "", signature: p.signature || "",
     auth_second_step: 1, hw_version: "1.7-BD-00", not_valid_token: 0,
     metrics: JSON.stringify({ mac: p.mac, sn: p.sn || "", type: "STB", model, uid: p.deviceId || "", random: "" }),
-    hw_version_2: "", timestamp: Math.floor(Date.now() / 1000), api_signature: 262, prehash: "",
-  }); } catch (e) { if (e.auth) throw e; /* some portals answer get_profile with nothing; carry on */ }
-  if (prof && (String(prof.blocked) === "1" || Number(prof.status) === 1 && prof.msg)) {
-    throw new PortalError(prof.msg || "This MAC address is blocked or not active on the portal.", true);
+    hw_version_2: "", timestamp: ts(), api_signature: 262, prehash: "",
+  });
+  const basicProfile = () => ({
+    type: "stb", action: "get_profile", hd: 1,
+    ver: "ImageDescription: 0.2.18-r14-pub-250; ImageDate: Fri Jan 15 15:20:44 EET 2016; PORTAL version: 5.1.0; API Version: JS API version: 328; STB API version: 134; Player Engine version: 0x566",
+    num_banks: 2, sn: p.sn || "", stb_type: model, image_version: p.image || "218", video_out: "hdmi",
+    device_id: p.deviceId || "", device_id2: p.deviceId2 || "", signature: p.signature || "",
+    auth_second_step: 0, hw_version: "1.7-BD-00", not_valid_token: 0, timestamp: ts(), api_signature: 262, prehash: "",
+  });
+  const randToken = () => Array.from({ length: 32 }, () => "0123456789ABCDEF"[Math.floor(Math.random() * 16)]).join("");
+  const handshake = async (mine) => {
+    const js = await call(api, referer, p, null, { type: "stb", action: "handshake", token: mine || "", prehash: "" });
+    return js?.token || mine || null;
+  };
+  // A cheap request that only works with an accepted session.
+  const verify = async (tok) => {
+    const g = await call(api, referer, p, tok, { type: "itv", action: "get_genres" });
+    return Array.isArray(g) || (g && typeof g === "object");
+  };
+
+  const variants = [
+    { name: "standard", tok: async () => token, prof: fullProfile },
+    { name: "basic profile", tok: () => handshake(), prof: basicProfile },
+    { name: "own token", tok: () => handshake(randToken()), prof: basicProfile },
+    { name: "own token, full profile", tok: () => handshake(randToken()), prof: fullProfile },
+    { name: "no profile step", tok: () => handshake(), prof: null },
+  ];
+  const notes = [];
+  let ok = false;
+  for (const v of variants) {
+    let tok, prof = null, profNote = "";
+    try { tok = await v.tok(); } catch (e) { notes.push(`${v.name}: handshake ${e.auth ? "rejected" : "failed"}`); continue; }
+    if (!tok) { notes.push(`${v.name}: no token`); continue; }
+    if (v.prof) {
+      try { prof = await call(api, referer, p, tok, v.prof()); }
+      catch (e) { if (e.auth && !e.unauthorized) throw e; profNote = e.empty ? "empty profile" : e.unauthorized ? "profile unauthorized" : "profile error"; }
+    }
+    if (prof && (String(prof.blocked) === "1" || (Number(prof.status) === 1 && prof.msg))) {
+      throw new PortalError(prof.msg || "This MAC address is blocked or not active on the portal.", true);
+    }
+    try {
+      if (await verify(tok)) { token = tok; ok = true; break; }
+      notes.push(`${v.name}: ${profNote || "profile ok"}, no data`);
+    } catch (e) {
+      notes.push(`${v.name}: ${profNote || "profile ok"}, ${e.unauthorized ? "unauthorized" : e.message}`);
+    }
+  }
+  if (!ok) {
+    throw new PortalError(`The portal gave a session but won't accept it. Check that the MAC, serial number, device ID and STB model match your TV app exactly. Attempts: ${notes.join("; ")}.`);
   }
 
   let account = null;
